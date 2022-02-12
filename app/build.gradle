@@ -28,7 +28,7 @@ android {
     buildToolsVersion "30.0.3"
 
     defaultConfig {
-        applicationId "com.mobvoi.wenet"
+        applicationId "com.fawai.asr"
         minSdkVersion 21
         targetSdkVersion 30
         versionCode 1
@@ -44,7 +44,7 @@ android {
 
         ndkVersion '21.1.6352462'
         ndk {
-            abiFilters 'arm64-v8a', 'x86_64'
+            abiFilters 'arm64-v8a'
         }
     }
 

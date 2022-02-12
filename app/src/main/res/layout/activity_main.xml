@@ -23,7 +23,7 @@
       app:layout_constraintTop_toTopOf="parent"
       app:layout_constraintVertical_bias="0.08" />
 
-    <com.mobvoi.wenet.VoiceRectView
+    <com.fawai.asr.VoiceRectView
       android:id="@+id/voiceRectView"
       android:layout_width="0dp"
       android:layout_height="150dp"
