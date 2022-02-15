@@ -150,7 +150,7 @@ class Fbank {
         for (size_t j = 0; j < data.size(); ++j)
           data[j] += dither_ * distribution_(generator_);
       }
-      // optinal remove dc offset
+      // optional remove dc offset
       if (remove_dc_offset_) {
         float mean = 0.0;
         for (size_t j = 0; j < data.size(); ++j) mean += data[j];

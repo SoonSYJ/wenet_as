@@ -30,7 +30,7 @@ FeaturePipeline::FeaturePipeline(const FeaturePipelineConfig& config)
 void FeaturePipeline::AcceptWaveform(const std::vector<float>& wav) {
   std::vector<std::vector<float>> feats;
   std::vector<float> waves;
-  waves.insert(waves.end(), remained_wav_.begin(), remained_wav_.end());
+  waves.insert(waves.end(), remained_wav_.begin(), remained_wav_.end());  //
   waves.insert(waves.end(), wav.begin(), wav.end());
   int num_frames = fbank_.Compute(waves, &feats);
   for (size_t i = 0; i < feats.size(); ++i) {

@@ -53,12 +53,12 @@ void TorchAsrDecoder::Reset() {
   encoder_outs_.clear();
   cached_feature_.clear();
   searcher_->Reset();
-  feature_pipeline_->Reset();
+  feature_pipeline_->Reset();  //
   ctc_endpointer_->Reset();
 }
 
 void TorchAsrDecoder::ResetContinuousDecoding() {
-  global_frame_offset_ = num_frames_;
+  global_frame_offset_ = num_frames_;  //
   start_ = false;
   result_.clear();
   offset_ = 0;
@@ -159,7 +159,7 @@ DecodeState TorchAsrDecoder::AdvanceDecoding() {
     encoder_outs_.push_back(std::move(chunk_out));
     int forward_time = timer.Elapsed();
     timer.Reset();
-    searcher_->Search(ctc_log_probs);
+    searcher_->Search(ctc_log_probs);  // beam search
     int search_time = timer.Elapsed();
     VLOG(3) << "forward takes " << forward_time << " ms, search takes "
             << search_time << " ms";

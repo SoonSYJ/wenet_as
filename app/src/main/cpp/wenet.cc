@@ -36,18 +36,19 @@ std::string total_result;  // NOLINT
 
 void init(JNIEnv *env, jobject, jstring jModelPath, jstring jDictPath, jstring jContextPath) {
   resource = std::make_shared<DecodeResource>();
+  // load model weights
   resource->model = std::make_shared<TorchAsrModel>();
   const char *pModelPath = (env)->GetStringUTFChars(jModelPath, nullptr);
   std::string modelPath = std::string(pModelPath);
   LOG(INFO) << "model path: " << modelPath;
   resource->model->Read(modelPath);
-
+  // load word dictionary to fst
   const char *pDictPath = (env)->GetStringUTFChars(jDictPath, nullptr);
   std::string dictPath = std::string(pDictPath);
   LOG(INFO) << "dict path: " << dictPath;
   resource->symbol_table = std::shared_ptr<fst::SymbolTable>(
           fst::SymbolTable::ReadText(dictPath));
-
+  // init context graph
   const char *pContextPath = (env)->GetStringUTFChars(jContextPath, nullptr);
   std::string contextPath = std::string(pContextPath);
   std::vector<std::string> contexts;
@@ -99,9 +100,9 @@ void set_input_finished() {
 
 void decode_thread_func() {
   while (true) {
-    state = decoder->Decode();
+    state = decoder->Decode();  // first pass
     if (state == kEndFeats || state == kEndpoint) {
-      decoder->Rescoring();
+      decoder->Rescoring();  // second pass final
     }
 
     std::string result;
@@ -148,9 +149,9 @@ jstring get_result(JNIEnv *env, jobject) {
 }
 }  // namespace wenet
 
-JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *) {
+JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *) {  // vm -> DVM vitrual machine
   JNIEnv *env;
-  if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK) {
+  if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK) {  // tell DVM JNI version
     return JNI_ERR;
   }
 

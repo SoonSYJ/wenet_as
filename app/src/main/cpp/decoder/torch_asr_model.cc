@@ -16,8 +16,8 @@ void TorchAsrModel::Read(const std::string& model_path, const int num_threads) {
   torch::jit::script::Module model = torch::jit::load(model_path);
   module_ = std::make_shared<TorchModule>(std::move(model));
   // For multi-thread performance
-  at::set_num_threads(num_threads);
-  torch::NoGradGuard no_grad;
+  at::set_num_threads(num_threads);  // default 1
+  torch::NoGradGuard no_grad;  // disable autograd to improve interface speed (libtorch)
   module_->eval();
   torch::jit::IValue o1 = module_->run_method("subsampling_rate");
   CHECK_EQ(o1.isInt(), true);
