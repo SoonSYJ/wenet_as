@@ -1,17 +1,23 @@
 package com.fawai.asr;
 
 import android.Manifest;
+import android.net.Uri;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.os.Bundle;
 import android.os.Process;
+import android.provider.ContactsContract;
 import android.util.Log;
 import android.widget.Button;
+import android.widget.CompoundButton;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.CheckBox;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -26,6 +32,7 @@ import java.util.concurrent.BlockingQueue;
 public class MainActivity extends AppCompatActivity {
 
   private final int MY_PERMISSIONS_RECORD_AUDIO = 1;
+  private final int MY_PERMISSIONS_READ_CONTACT = 2;
   private static final String LOG_TAG = "WENET";
   private static final int SAMPLE_RATE = 16000;  // The sampling rate
   private static final int MAX_QUEUE_SIZE = 2500;  // 100 seconds audio, 1 / 0.04 * 100
@@ -78,17 +85,37 @@ public class MainActivity extends AppCompatActivity {
     setContentView(R.layout.activity_main);  // formal, R is a class which content the resource ID
 
     requestAudioPermissions();
+    requestContactPermissions();
 
     final String modelPath = new File(assetFilePath(this, "final.zip")).getAbsolutePath();
     final String dictPath = new File(assetFilePath(this, "words.txt")).getAbsolutePath();
     final String contextPath = new File(assetFilePath(this, "context.txt")).getAbsolutePath();
     TextView textView = findViewById(R.id.textView);  // get textView controller
     textView.setText("");  // clear textView
-    Recognize.init(modelPath, dictPath, contextPath);  // init ASR engine
 
+    CheckBox hotWordCheckBox = findViewById(R.id.hotWordCheckBox);  // get hotWordCheckBox controller
+
+    Recognize.init(modelPath, dictPath, "");
+    final boolean[] updateRecognize = {false};
+
+    hotWordCheckBox.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+      @Override
+      public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
+        updateRecognize[0] = true;
+      }
+    });
     Button button = findViewById(R.id.button);  // get button controller
     button.setText("Start Record");  // set button text
     button.setOnClickListener(view -> {  // watch if button is touched
+      if (updateRecognize[0]) {
+        if (hotWordCheckBox.isChecked()) {
+          Recognize.init(modelPath, dictPath, contextPath);
+        } else {
+          Recognize.init(modelPath, dictPath, "");
+        }
+        updateRecognize[0] = false;
+      }
+
       if (!startRecord) {
         startRecord = true;  // set recording flag
         Recognize.reset();  // reset ASR engine
@@ -113,6 +140,15 @@ public class MainActivity extends AppCompatActivity {
           MY_PERMISSIONS_RECORD_AUDIO);
     } else {
       initRecoder();
+    }
+  }
+
+  private void requestContactPermissions() {
+    if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS)
+            != PackageManager.PERMISSION_GRANTED) {
+      ActivityCompat.requestPermissions(this,
+              new String[]{Manifest.permission.READ_CONTACTS},
+              MY_PERMISSIONS_READ_CONTACT);
     }
   }
 
@@ -205,9 +241,60 @@ public class MainActivity extends AppCompatActivity {
             Button button = findViewById(R.id.button);
             button.setEnabled(true);
           });
+          String asrResult = Recognize.getResult();
+          boolean callPhoneStatus = asrResult.contains("打电话");
+          if (callPhoneStatus) {
+            TextView textView = findViewById(R.id.textView);
+            int contactBE = asrResult.indexOf(">");
+            int contactED = asrResult.lastIndexOf("<");
+
+            if (contactBE == -1 | contactED == -1) {
+              Log.i(LOG_TAG, "Not contact intent ");
+              textView.setText("^^未匹配到联系人实体!");
+            } else {
+              String contactName = asrResult.substring(contactBE + 1, contactED);
+              Log.i(LOG_TAG, "Contact name: " + contactName);
+              String number = getContact(contactName);
+              if (number != "") {
+                Intent intent = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + number));
+                startActivity(intent);
+              } else {
+                Log.i(LOG_TAG, "Not contact name " + contactName);
+                textView.setText("^^未找到所述联系人！");
+              }
+            }
+          }
           break;
         }
       }
     }).start();
+  }
+
+  String getContact(String nameStr) {
+    String[] SQL_COLUMN = new String[]{
+            ContactsContract.CommonDataKinds.Identity.RAW_CONTACT_ID,
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+            ContactsContract.CommonDataKinds.Phone.NUMBER};
+    String mSelectClaus = ContactsContract.Contacts.DISPLAY_NAME+"=?";
+    String[] mSelectionArgs = new String[]{nameStr};
+    Log.i(LOG_TAG, "Start query contact");
+    Cursor cursor = getContentResolver().query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI, SQL_COLUMN, mSelectClaus, mSelectionArgs, null);
+    Log.i(LOG_TAG, "Finished query contact");
+    if (cursor != null) {
+      String ID = "";
+      String contactName = "";
+      String phoneNumber = "";
+
+      while (cursor.moveToNext()) {
+        ID = cursor.getString(0);
+        contactName = cursor.getString(1);
+        phoneNumber = cursor.getString(2);
+        Log.i(LOG_TAG, "Contact name: " + contactName + " Phone number: " + phoneNumber);
+      }
+      return phoneNumber;
+    } else {
+      return "";
+    }
   }
 }

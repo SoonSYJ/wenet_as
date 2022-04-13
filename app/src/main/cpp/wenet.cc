@@ -52,16 +52,20 @@ void init(JNIEnv *env, jobject, jstring jModelPath, jstring jDictPath, jstring j
   const char *pContextPath = (env)->GetStringUTFChars(jContextPath, nullptr);
   std::string contextPath = std::string(pContextPath);
   LOG(INFO) << "context path: " << contextPath;
-  std::vector<std::string> contexts;
-  std::ifstream infile(contextPath);
-  std::string context;
-  while (getline(infile, context)) {
-    contexts.emplace_back(Trim(context));
+
+  if (contextPath != "") {
+      std::vector<std::string> contexts;
+      std::ifstream infile(contextPath);
+      std::string context;
+      while (getline(infile, context)) {
+          contexts.emplace_back(Trim(context));
+      }
+      ContextConfig config;
+      config.context_score = 12.0;
+      resource->context_graph = std::make_shared<ContextGraph>(config);
+      resource->context_graph->BuildContextGraph(contexts, resource->symbol_table);
   }
-  ContextConfig config;
-  config.context_score = 12.0;
-  resource->context_graph = std::make_shared<ContextGraph>(config);
-  resource->context_graph->BuildContextGraph(contexts, resource->symbol_table);
+
   PostProcessOptions post_process_opts;
   resource->post_processor =
     std::make_shared<PostProcessor>(std::move(post_process_opts));

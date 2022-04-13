@@ -32,10 +32,9 @@
       VoiceRect:RectOffset="0"
       VoiceRect:RectSpeed="300"
       VoiceRect:RectTopColor="@color/green"
-      app:layout_constraintBottom_toTopOf="@+id/button"
+      app:layout_constraintBottom_toTopOf="@+id/hotWordCheckBox"
       app:layout_constraintEnd_toEndOf="parent"
-      app:layout_constraintStart_toStartOf="parent"
-      app:layout_constraintTop_toBottomOf="@+id/textView" />
+      app:layout_constraintStart_toStartOf="parent" />
 
     <Button
         android:id="@+id/button"
@@ -44,6 +43,17 @@
         android:text="Button"
         android:textColor="#37474F"
         app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="1.0"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <CheckBox
+        android:id="@+id/hotWordCheckBox"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:checked="false"
+        android:text="use_hotword"
+        app:layout_constraintBottom_toTopOf="@+id/button"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="1.0"
         app:layout_constraintStart_toStartOf="parent" />
