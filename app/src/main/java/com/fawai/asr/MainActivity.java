@@ -245,14 +245,14 @@ public class MainActivity extends AppCompatActivity {
           boolean callPhoneStatus = asrResult.contains("打电话");
           if (callPhoneStatus) {
             TextView textView = findViewById(R.id.textView);
-            int contactBE = asrResult.indexOf(">");
-            int contactED = asrResult.lastIndexOf("<");
+            int contactBE = asrResult.indexOf("<c>");
+            int contactED = asrResult.lastIndexOf("</c>");
 
             if (contactBE == -1 | contactED == -1) {
               Log.i(LOG_TAG, "Not contact intent ");
               textView.setText("^^未匹配到联系人实体!");
             } else {
-              String contactName = asrResult.substring(contactBE + 1, contactED);
+              String contactName = asrResult.substring(contactBE + 3, contactED);
               Log.i(LOG_TAG, "Contact name: " + contactName);
               String number = getContact(contactName);
               if (number != "") {
