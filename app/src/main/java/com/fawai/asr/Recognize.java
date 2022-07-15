@@ -6,7 +6,7 @@ public class Recognize {
     System.loadLibrary("wenet");
   }
 
-  public static native void init(String modelPath, String dictPath, String contextPath);
+  public static native void init(String modelDir, Boolean doContext);
   public static native void reset();
   public static native void acceptWaveform(short[] waveform);
   public static native void setInputFinished();

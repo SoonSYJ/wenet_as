@@ -16,7 +16,7 @@
 #include "torch/script.h"
 #include "torch/torch.h"
 
-#include "decoder/torch_asr_decoder.h"
+#include "decoder/asr_decoder.h"
 #include "decoder/torch_asr_model.h"
 #include "frontend/feature_pipeline.h"
 #include "frontend/wav.h"
@@ -29,31 +29,29 @@ namespace wenet {
 std::shared_ptr<DecodeOptions> decode_config;
 std::shared_ptr<FeaturePipelineConfig> feature_config;
 std::shared_ptr<FeaturePipeline> feature_pipeline;
-std::shared_ptr<TorchAsrDecoder> decoder;
+std::shared_ptr<AsrDecoder> decoder;
 std::shared_ptr<DecodeResource> resource;
 DecodeState state = kEndBatch;
 std::string total_result;  // NOLINT
 
-void init(JNIEnv *env, jobject, jstring jModelPath, jstring jDictPath, jstring jContextPath) {
-  resource = std::make_shared<DecodeResource>();
-  // load model weights
-  resource->model = std::make_shared<TorchAsrModel>();
-  const char *pModelPath = (env)->GetStringUTFChars(jModelPath, nullptr);
-  std::string modelPath = std::string(pModelPath);
+void init(JNIEnv* env, jobject, jstring jModelDir, jboolean jDoContext) {
+  const char* pModelDir = env->GetStringUTFChars(jModelDir, nullptr);
+  std::string modelPath = std::string(pModelDir) + "/final.zip";
+  std::string dictPath = std::string(pModelDir) + "/units.txt";
+  std::string contextPath = std::string(pModelDir) + "/context.txt";
+
+  auto model = std::make_shared<TorchAsrModel>();
+  model->Read(modelPath);
   LOG(INFO) << "model path: " << modelPath;
-  resource->model->Read(modelPath);
+
+  resource = std::make_shared<DecodeResource>();
+  resource->model = model;
   // load word dictionary to fst
-  const char *pDictPath = (env)->GetStringUTFChars(jDictPath, nullptr);
-  std::string dictPath = std::string(pDictPath);
-  LOG(INFO) << "dict path: " << dictPath;
   resource->symbol_table = std::shared_ptr<fst::SymbolTable>(
           fst::SymbolTable::ReadText(dictPath));
-  // init context graph
-  const char *pContextPath = (env)->GetStringUTFChars(jContextPath, nullptr);
-  std::string contextPath = std::string(pContextPath);
-  LOG(INFO) << "context path: " << contextPath;
+  LOG(INFO) << "dict path: " << dictPath;
 
-  if (contextPath != "") {
+  if (jDoContext != 0) {
       std::vector<std::string> contexts;
       std::ifstream infile(contextPath);
       std::string context;
@@ -68,7 +66,7 @@ void init(JNIEnv *env, jobject, jstring jModelPath, jstring jDictPath, jstring j
 
   PostProcessOptions post_process_opts;
   resource->post_processor =
-    std::make_shared<PostProcessor>(std::move(post_process_opts));
+    std::make_shared<PostProcessor>(post_process_opts);
 
   feature_config = std::make_shared<FeaturePipelineConfig>(80, 16000);
   feature_pipeline = std::make_shared<FeaturePipeline>(*feature_config);
@@ -76,7 +74,7 @@ void init(JNIEnv *env, jobject, jstring jModelPath, jstring jDictPath, jstring j
   decode_config = std::make_shared<DecodeOptions>();
   decode_config->chunk_size = 16;
 
-  decoder = std::make_shared<TorchAsrDecoder>(feature_pipeline, resource,
+  decoder = std::make_shared<AsrDecoder>(feature_pipeline, resource,
                                               *decode_config);
   LOG(INFO) << "Finished resource loading";
 }
@@ -90,12 +88,9 @@ void reset(JNIEnv *env, jobject) {
 
 void accept_waveform(JNIEnv *env, jobject, jshortArray jWaveform) {
   jsize size = env->GetArrayLength(jWaveform);
-  std::vector<int16_t> waveform(size);
-  env->GetShortArrayRegion(jWaveform, 0, size, &waveform[0]);
-  std::vector<float> floatWaveform(waveform.begin(), waveform.end());
-  feature_pipeline->AcceptWaveform(floatWaveform);
-  LOG(INFO) << "wenet accept waveform in ms: "
-            << int(floatWaveform.size() / 16);
+  int16_t* waveform = env->GetShortArrayElements(jWaveform, 0);
+  feature_pipeline->AcceptWaveform(waveform, size);
+  LOG(INFO) << "wenet accept waveform in ms: " << int(size / 16);
 }
 
 void set_input_finished() {
@@ -166,7 +161,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *) {  // vm -> DVM vitrual machine
   }
 
   static const JNINativeMethod methods[] = {
-    {"init", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+    {"init", "(Ljava/lang/String;Ljava/lang/Boolean;)V",
      reinterpret_cast<void *>(wenet::init)},
     {"reset", "()V", reinterpret_cast<void *>(wenet::reset)},
     {"acceptWaveform", "([S)V",

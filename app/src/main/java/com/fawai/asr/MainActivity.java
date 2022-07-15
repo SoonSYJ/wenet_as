@@ -1,10 +1,12 @@
 package com.fawai.asr;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.net.Uri;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.AssetManager;
 import android.database.Cursor;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
@@ -26,6 +28,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 
@@ -36,32 +40,35 @@ public class MainActivity extends AppCompatActivity {
   private static final String LOG_TAG = "WENET";
   private static final int SAMPLE_RATE = 16000;  // The sampling rate
   private static final int MAX_QUEUE_SIZE = 2500;  // 100 seconds audio, 1 / 0.04 * 100
+  private static final List<String> resource = Arrays.asList(
+          "final.zip", "units.txt", "ctc.ort", "decoder.ort", "encoder.ort", "context.txt"
+  );
 
   private boolean startRecord = false;
   private AudioRecord record = null;
   private int miniBufferSize = 0;  // 1280 bytes 648 byte 40ms, 0.04s
   private final BlockingQueue<short[]> bufferQueue = new ArrayBlockingQueue<>(MAX_QUEUE_SIZE);
 
-  public static String assetFilePath(Context context, String assetName) {
-    File file = new File(context.getFilesDir(), assetName);
-    if (file.exists() && file.length() > 0) {
-      return file.getAbsolutePath();
-    }
-
-    try (InputStream is = context.getAssets().open(assetName)) {
-      try (OutputStream os = new FileOutputStream(file)) {
-        byte[] buffer = new byte[4 * 1024];
-        int read;
-        while ((read = is.read(buffer)) != -1) {
-          os.write(buffer, 0, read);
+  public static void assetsInit(Context context) throws IOException {
+    AssetManager assetMgr = context.getAssets();
+    // Unzip all files in resource from assets to context.
+    // Note: Uninstall the APP will remove the resource files in the context.
+    for (String file : assetMgr.list("")) {
+      if (resource.contains(file)) {
+        File dst = new File(context.getFilesDir(), file);
+        if (!dst.exists() || dst.length() == 0) {
+          Log.i(LOG_TAG, "Unzipping " + file + " to " + dst.getAbsolutePath());
+          InputStream is = assetMgr.open(file);
+          OutputStream os = new FileOutputStream(dst);
+          byte[] buffer = new byte[4 * 1024];
+          int read;
+          while ((read = is.read(buffer)) != -1) {
+            os.write(buffer, 0, read);
+          }
+          os.flush();
         }
-        os.flush();
       }
-      return file.getAbsolutePath();
-    } catch (IOException e) {
-      Log.e(LOG_TAG, "Error process asset " + assetName + " to file path");
     }
-    return null;
   }
 
   @Override
@@ -70,7 +77,7 @@ public class MainActivity extends AppCompatActivity {
     if (requestCode == MY_PERMISSIONS_RECORD_AUDIO) {
       if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
         Log.i(LOG_TAG, "record permission is granted");
-        initRecoder();
+        initRecorder();
       } else {
         Toast.makeText(this, "Permissions denied to record audio", Toast.LENGTH_LONG).show();
         Button button = findViewById(R.id.button);
@@ -79,6 +86,7 @@ public class MainActivity extends AppCompatActivity {
     }
   }
 
+  @SuppressLint("SetTextI18n")
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);  // formal
@@ -87,15 +95,18 @@ public class MainActivity extends AppCompatActivity {
     requestAudioPermissions();
     requestContactPermissions();
 
-    final String modelPath = new File(assetFilePath(this, "final.zip")).getAbsolutePath();
-    final String dictPath = new File(assetFilePath(this, "words.txt")).getAbsolutePath();
-    final String contextPath = new File(assetFilePath(this, "context.txt")).getAbsolutePath();
+    try {
+      assetsInit(this);
+    } catch (IOException e) {
+      Log.e(LOG_TAG, "Error process asset files to file path");
+    }
+
     TextView textView = findViewById(R.id.textView);  // get textView controller
     textView.setText("");  // clear textView
 
     CheckBox hotWordCheckBox = findViewById(R.id.hotWordCheckBox);  // get hotWordCheckBox controller
 
-    Recognize.init(modelPath, dictPath, "");
+    Recognize.init(getFilesDir().getPath(), false);
     final boolean[] updateRecognize = {false};
 
     hotWordCheckBox.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
@@ -109,9 +120,9 @@ public class MainActivity extends AppCompatActivity {
     button.setOnClickListener(view -> {  // watch if button is touched
       if (updateRecognize[0]) {
         if (hotWordCheckBox.isChecked()) {
-          Recognize.init(modelPath, dictPath, contextPath);
+          Recognize.init(getFilesDir().getPath(), true);
         } else {
-          Recognize.init(modelPath, dictPath, "");
+          Recognize.init(getFilesDir().getPath(), false);
         }
         updateRecognize[0] = false;
       }
@@ -139,7 +150,7 @@ public class MainActivity extends AppCompatActivity {
           new String[]{Manifest.permission.RECORD_AUDIO},
           MY_PERMISSIONS_RECORD_AUDIO);
     } else {
-      initRecoder();
+      initRecorder();
     }
   }
 
@@ -152,7 +163,7 @@ public class MainActivity extends AppCompatActivity {
     }
   }
 
-  private void initRecoder() {
+  private void initRecorder() {
     // buffer size in bytes 1280
     miniBufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE,
         AudioFormat.CHANNEL_IN_MONO,
@@ -245,22 +256,22 @@ public class MainActivity extends AppCompatActivity {
           boolean callPhoneStatus = asrResult.contains("打电话");
           if (callPhoneStatus) {
             TextView textView = findViewById(R.id.textView);
-            int contactBE = asrResult.indexOf("<c>");
-            int contactED = asrResult.lastIndexOf("</c>");
+            int contactBE = asrResult.indexOf("@");
+            int contactED = asrResult.lastIndexOf("@");
 
             if (contactBE == -1 | contactED == -1) {
               Log.i(LOG_TAG, "Not contact intent ");
-              textView.setText("^^未匹配到联系人实体!");
+              textView.setText("未匹配到联系人实体");
             } else {
-              String contactName = asrResult.substring(contactBE + 3, contactED);
+              String contactName = asrResult.substring(contactBE+1, contactED);
               Log.i(LOG_TAG, "Contact name: " + contactName);
               String number = getContact(contactName);
-              if (number != "") {
+              if (!number.equals("")) {
                 Intent intent = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + number));
                 startActivity(intent);
               } else {
                 Log.i(LOG_TAG, "Not contact name " + contactName);
-                textView.setText("^^未找到所述联系人！");
+                textView.setText("未找到所述联系人");
               }
             }
           }
