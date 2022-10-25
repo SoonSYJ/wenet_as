@@ -33,11 +33,13 @@ import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 
+import ai.onnxruntime.OrtException;
+
 public class MainActivity extends AppCompatActivity {
 
   private final int MY_PERMISSIONS_RECORD_AUDIO = 1;
   private final int MY_PERMISSIONS_READ_CONTACT = 2;
-  private static final String LOG_TAG = "WENET";
+  private static final String LOG_TAG = "FAWASR";
   private static final int SAMPLE_RATE = 16000;  // The sampling rate
   private static final int MAX_QUEUE_SIZE = 2500;  // 100 seconds audio, 1 / 0.04 * 100
   private static final List<String> resource = Arrays.asList(
@@ -47,7 +49,10 @@ public class MainActivity extends AppCompatActivity {
   private boolean startRecord = false;
   private AudioRecord record = null;
   private int miniBufferSize = 0;  // 1280 bytes 648 byte 40ms, 0.04s
-  private final BlockingQueue<short[]> bufferQueue = new ArrayBlockingQueue<>(MAX_QUEUE_SIZE);
+  private final BlockingQueue<short[]> asrBufferQueue = new ArrayBlockingQueue<>(MAX_QUEUE_SIZE);
+  private final BlockingQueue<short[]> vadBufferQueue = new ArrayBlockingQueue<>(MAX_QUEUE_SIZE);
+
+  private boolean voiceDetected = false;
 
   public static void assetsInit(Context context) throws IOException {
     AssetManager assetMgr = context.getAssets();
@@ -97,7 +102,8 @@ public class MainActivity extends AppCompatActivity {
 
     try {
       assetsInit(this);
-    } catch (IOException e) {
+      VoiceDetector.init(getApplicationContext());
+    } catch (IOException | OrtException e) {
       Log.e(LOG_TAG, "Error process asset files to file path");
     }
 
@@ -107,6 +113,7 @@ public class MainActivity extends AppCompatActivity {
     CheckBox hotWordCheckBox = findViewById(R.id.hotWordCheckBox);  // get hotWordCheckBox controller
 
     Recognize.init(getFilesDir().getPath(), false);
+
     final boolean[] updateRecognize = {false};
 
     hotWordCheckBox.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
@@ -172,7 +179,7 @@ public class MainActivity extends AppCompatActivity {
       Log.e(LOG_TAG, "Audio buffer can't initialize!");
       return;
     }
-    record = new AudioRecord(MediaRecorder.AudioSource.DEFAULT,
+    record = new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION,
         SAMPLE_RATE,
         AudioFormat.CHANNEL_IN_MONO,
         AudioFormat.ENCODING_PCM_16BIT,
@@ -190,12 +197,13 @@ public class MainActivity extends AppCompatActivity {
       record.startRecording();
       Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
       while (startRecord) {
-        short[] buffer = new short[miniBufferSize / 2];
+        short[] buffer = new short[miniBufferSize / 2]; // 640 samples
         int read = record.read(buffer, 0, buffer.length);
         voiceView.add(calculateDb(buffer));
         try {
           if (AudioRecord.ERROR_INVALID_OPERATION != read) {
-            bufferQueue.put(buffer);
+            asrBufferQueue.put(buffer);
+//            vadBufferQueue.put(buffer);
           }
         } catch (InterruptedException e) {
           Log.e(LOG_TAG, e.getMessage());
@@ -221,12 +229,32 @@ public class MainActivity extends AppCompatActivity {
     return energy;
   }
 
+  private void startVadThread() {
+    new Thread(() -> {
+      long shortsRead = 0;
+      while (startRecord || vadBufferQueue.size() > 0) {
+        try {
+          short[] data = vadBufferQueue.take();
+          // 1. add data to C++ interface
+          Recognize.acceptWaveform(data);
+          // 2. get partial result
+          runOnUiThread(() -> {
+            TextView textView = findViewById(R.id.textView);
+            textView.setText(Recognize.getResult());
+          });
+        } catch (InterruptedException e) {
+          Log.e(LOG_TAG, e.getMessage());
+        }
+      }
+    }).start();
+  }
+
   private void startAsrThread() {
     new Thread(() -> {
       // Send all data
-      while (startRecord || bufferQueue.size() > 0) {
+      while (startRecord || asrBufferQueue.size() > 0) {
         try {
-          short[] data = bufferQueue.take();
+          short[] data = asrBufferQueue.take();
           // 1. add data to C++ interface
           Recognize.acceptWaveform(data);
           // 2. get partial result
