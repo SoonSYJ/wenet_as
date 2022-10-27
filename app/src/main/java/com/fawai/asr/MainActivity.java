@@ -139,9 +139,11 @@ public class MainActivity extends AppCompatActivity {
         Recognize.reset();  // reset ASR engine
         startRecordThread();  // start recorder
         startAsrThread();  // start the engine
+        startVadThread();
         Recognize.startDecode();  // start ASR decoding
         button.setText("Stop Record");  // set button text
       } else {
+        voiceDetected = false;
         startRecord = false;  // set recording flag
         Recognize.setInputFinished();  // stop ASR engine
         button.setText("Start Record");  // set button text
@@ -202,8 +204,10 @@ public class MainActivity extends AppCompatActivity {
         voiceView.add(calculateDb(buffer));
         try {
           if (AudioRecord.ERROR_INVALID_OPERATION != read) {
-            asrBufferQueue.put(buffer);
-//            vadBufferQueue.put(buffer);
+            vadBufferQueue.put(buffer);
+            if (voiceDetected) {
+              asrBufferQueue.put(buffer);
+            }
           }
         } catch (InterruptedException e) {
           Log.e(LOG_TAG, e.getMessage());
@@ -218,31 +222,19 @@ public class MainActivity extends AppCompatActivity {
     }).start();
   }
 
-  private double calculateDb(short[] buffer) {
-    double energy = 0.0;
-    for (short value : buffer) {
-      energy += value * value;
-    }
-    energy /= buffer.length;
-    energy = (10 * Math.log10(1 + energy)) / 100;
-    energy = Math.min(energy, 1.0);
-    return energy;
-  }
-
   private void startVadThread() {
     new Thread(() -> {
-      long shortsRead = 0;
       while (startRecord || vadBufferQueue.size() > 0) {
         try {
           short[] data = vadBufferQueue.take();
-          // 1. add data to C++ interface
-          Recognize.acceptWaveform(data);
-          // 2. get partial result
-          runOnUiThread(() -> {
-            TextView textView = findViewById(R.id.textView);
-            textView.setText(Recognize.getResult());
-          });
-        } catch (InterruptedException e) {
+          voiceDetected = VoiceDetector.vadDetect(data);
+          if (voiceDetected) {
+            runOnUiThread(() -> {
+              TextView textView = findViewById(R.id.textView);
+              textView.setText("VoiceDetected");
+            });
+          }
+        } catch (InterruptedException | OrtException e) {
           Log.e(LOG_TAG, e.getMessage());
         }
       }
@@ -252,7 +244,7 @@ public class MainActivity extends AppCompatActivity {
   private void startAsrThread() {
     new Thread(() -> {
       // Send all data
-      while (startRecord || asrBufferQueue.size() > 0) {
+      while (startRecord || asrBufferQueue.size() > 0 || voiceDetected) {
         try {
           short[] data = asrBufferQueue.take();
           // 1. add data to C++ interface
@@ -335,5 +327,16 @@ public class MainActivity extends AppCompatActivity {
     } else {
       return "";
     }
+  }
+
+  private double calculateDb(short[] buffer) {
+    double energy = 0.0;
+    for (short value : buffer) {
+      energy += value * value;
+    }
+    energy /= buffer.length;
+    energy = (10 * Math.log10(1 + energy)) / 100;
+    energy = Math.min(energy, 1.0);
+    return energy;
   }
 }
