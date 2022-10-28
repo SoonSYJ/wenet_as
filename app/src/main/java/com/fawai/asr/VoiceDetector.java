@@ -105,9 +105,9 @@ public class VoiceDetector {
         // voice detection
         // TODO sos and eos parsing
         float[][][] logprob = (float[][][]) output.get(0).getValue();
-        for (int i = 0; i < logprob.length; i++) {
-            Log.d(LOG_TAG, "vad log prob: " + logprob[0][0][i]);
-            if (logprob[0][0][i] < 0.5)
+        for (int i = 0; i < logprob[0].length; i++) {
+            Log.d(LOG_TAG, "vad log prob: " + logprob[0][i][0]);
+            if (logprob[0][i][0] < 0.5)
                 return true;
         }
         return false;
