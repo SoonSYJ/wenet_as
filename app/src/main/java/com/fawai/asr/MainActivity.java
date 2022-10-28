@@ -53,7 +53,7 @@ public class MainActivity extends AppCompatActivity {
   private final BlockingQueue<short[]> vadBufferQueue = new ArrayBlockingQueue<>(MAX_QUEUE_SIZE);
 
   private boolean vadBufferClean = false;
-  private final BlockingQueue<short[]> vadPreBufferQueue = new ArrayBlockingQueue<>(640*2);
+  private final BlockingQueue<short[]> vadPreBufferQueue = new ArrayBlockingQueue<>(640 * 3);
 
   private boolean voiceDetected = false;
 
@@ -249,13 +249,16 @@ public class MainActivity extends AppCompatActivity {
         } catch (InterruptedException | OrtException e) {
           Log.e(LOG_TAG, e.getMessage());
         }
-      }
-      if (!voiceDetected) {
-        // enable button if voice not detected
-        runOnUiThread(() -> {
-          Button button = findViewById(R.id.button);
-          button.setEnabled(true);
-        });
+        if (!startRecord) {
+          if (!voiceDetected) {
+            // enable button if voice not detected
+            runOnUiThread(() -> {
+              Button button = findViewById(R.id.button);
+              button.setEnabled(true);
+            });
+          }
+          break;
+        }
       }
     }).start();
   }
